@@ -263,7 +263,7 @@ class instance:
         
         self.penaltyVessels = maxDistCdc
         self.travelcostwater = 1
-        self.penaltyCars = maxipt
+        self.penaltyCars = maxipt 
         self.travelcoststreet = 1
         
     def GenerateProblem(self):
@@ -272,10 +272,13 @@ class instance:
         self.CreateDistMatrix()
         self.UpdateTWs()
     
-def readGenerate(instance_name, nofWP):
+def readGenerate(instance_name, nofWP, WRS, timeLimit):
     VRPTWinstance = ReadSolomonInstance(instance_name, nofWP)
     problem = instance(instance_name, VRPTWinstance[0])
     problem.GenerateProblem()
+    problem.penaltyVessels *= WRS
+    problem.travelcostwater *= WRS
+    problem.timeLimit = timeLimit
     return problem 
 
 
