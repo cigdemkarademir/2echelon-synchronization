@@ -1,11 +1,12 @@
+import os
+import sys
+import io
+import numpy
 import instanceGenerator
 import models
 import solution
 import time
 from pathlib import Path
-import os
-import io
-import numpy
 from os import walk
 
 
@@ -56,7 +57,7 @@ for instance_name in filenames:
     
     
     models.JointSynchronized(problem) #solve joint model by BB
-    problem.decomposedModel.startTime = time.time()
+    
     #input("Press Enter to continue...")
     
     if count >= input3:

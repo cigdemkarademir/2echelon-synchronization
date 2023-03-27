@@ -12,6 +12,8 @@ incumbentTime = time.time()
 
 #if joint model will solve the problem, then do not set subproblem argument
 #else set it True to return joint model to use as subproblem
+
+#Default subproblem argument =  False: optimize and report the stats or True: generate subproblem and return the model
 def JointSynchronized(problem, subproblem = False): 
     #sets
     SetCd = []
