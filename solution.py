@@ -4,7 +4,7 @@ import numpy
 import math 
 
 class Solution:
-    def __init__(self, IsFeasible):
+    def __init__(self, IsFeasible=False):
         self.isFeasible = IsFeasible 
         self.index = 0 #the order of the solution found in BB process
         self.objVal = 100000000
@@ -30,6 +30,8 @@ class Solution:
         self.waterSequence = []                
         self.waterLowerBound = 0
         self.lowerBoundRoot = 0
+        self.lowerRouting = 0
+        self.lowerTransfer = 0
         self.cuttOFF = False
         self.isBest = False
         self.foundBefore = False
@@ -39,11 +41,12 @@ class Solution:
         self.reducedVars = []
         self.arcCostS = []
         self.reducedCosts = []
-        self.piA = -1
-        self.piT = -1
+        self.piA = []
+        self.piT =[]
         self.ts = False
         self.solvedRouting = False
         self.optimizedHubs = False
+        self.lowerFixed = 0
     def UpdateSolution(problem):
         return
 
@@ -92,9 +95,10 @@ class Solution:
         nofCars = len(routes)
         nofTransfers = len(transferPoints)
         totalDemand = 0
+
+        self.routeSequeneces = routes        
         
         for r in routes:
-            print(r)
             i = r[0]
             streetCost += problem.DistMatrix[0][i]
             for s in range(len(r)):
@@ -128,7 +132,7 @@ class Solution:
         
         nofHubsUsed = numpy.unique(hubs)
         
-        file4.write(str(problem.name)+"\t"+str(len(problem.customers))+"\t"+"StreetLevel nofCars"+"\t"+str(nofCars)+"\t"
+        file4.write(str(problem.name)+"\t"+str(len(problem.customers))+"\t"+str(problem.costScenario)+"\t"+str(problem.fix_ref_scenario)+"\t"+str(problem.normalized)+"\t"+"StreetLevel nofCars"+"\t"+str(nofCars)+"\t"
                     +"Street Travel Time"+"\t"+str(round(streetCost,2))+"\t"+str(round(street,2))+"\t"+"AverageLoaded"+"\t"+str(averageLoadCars)+"\t"
                     +"Average PercentLoad"+"\t"+str(averagePercentLoadCars)+"\t"+"ModalShare"+"\t"+str(modalShare)+"\t"
                     +"Minimum required nofTransfers"+"\t"+str(minimumNofTransfers)+"\t"+"nofTransfersOptimal"+"\t"+str(nofTransfers)+"\t"

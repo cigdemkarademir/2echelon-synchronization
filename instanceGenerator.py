@@ -3,11 +3,10 @@ import os
 import io
 import numpy
 import math 
-import pandas
 import time
 from pathlib import Path
 from os import walk
-
+import sklearn.cluster
 
 class Node:
     def __init__(self, t, index, xcor,ycor,demand,earliest,latest,serviceTime):
@@ -45,7 +44,7 @@ def ReadSolomonInstance(instance_name, N):
     return nodes, distMatrix, Capacity
 
 class instance:
-    def __init__(self, name, nodes,decomposedModel=None):
+    def __init__(self, name, nodes, decomposedModel=None):
         self.name = name
         self.nodes = nodes
         self.satellites = []
@@ -53,7 +52,7 @@ class instance:
         self.nofSatellites = 4
         self.VesselCapacity = 250
         self.CarCapacity = 50
-        self.TransferDuration = 150  
+        self.TransferDuration = 0  
         self.penaltyVessels = 1000
         self.penaltyCars = 1000
         self.travelcostwater = 1
@@ -65,6 +64,7 @@ class instance:
         self.stats = "stats.txt"
         self.isBenchmark = False
         self.twoechelon = True
+        self.locate_by_kmeans = False
         self.isDelivery = False
         self.bestObjectve = 10000000
         self.bestFoundTime = 0
@@ -76,8 +76,11 @@ class instance:
         self.closestHubtoCDC = 0
         self.optimal = False
         self.nofRemoval = 3
+        self.closeness = 0
+        self.initial_solution = None
         
     def AddCDC(self):
+    #The layout used is -50/150 for CDC
         #based on Grangier et al (2016) CDC definition
         #Grangier, P., Gendreau, M., Lehuédé, F., & Rousseau, L. M. (2016).
         #An adaptive large neighborhood search for the two-echelon multiple-trip
@@ -107,17 +110,17 @@ class instance:
             if current.ycor > maxy:
                 maxy = current.ycor  
         average = sumService / countC
-        self.TransferDuration = math.ceil( average * 2)
-        xcorCDC = minx - (float)((maxx - minx) / 2)
-        ycorCDC = maxy + (float)((maxy - miny) / 2)
+        self.TransferDuration = math.ceil( average * 2) #default transfer duration is constant and twice of the average customer service duration
+        xcorCDC = minx - (float)((maxx - minx) / 2) # 50% left to the demand area
+        ycorCDC = maxy + (float)((maxy - miny) / 2) # 50% up to the demand area -50/150 CDC location scheme used in Grangier et al.
 
         self.nodes.append(Node("CDC", len(self.nodes), xcorCDC, ycorCDC, 0, self.nodes[0].earliest,
                                   self.nodes[0].latest, 0))
-        self.CDC = len(self.nodes) - 1
+        self.CDC = len(self.nodes) - 1 #index of the CDC
         
         #add lower bound on the number of vessels
         lowerVessels = math.ceil (totalDemand / self.VesselCapacity )
-        self.minVessels = lowerVessels
+        self.minVessels = lowerVessels #only lower bound on the number of vehicles based on the capacity
         
     def AddSatellites(self):
         
@@ -125,10 +128,13 @@ class instance:
         miny = 1000000
         maxx = -100000
         maxy = -100000
-
+        xCoord = []
+        yCoord = []
         for i in range(len(self.nodes)):
             current = self.nodes[i]
             if current.type == "C":
+                xCoord.append(current.xcor)
+                yCoord.append(current.ycor)
                 if current.xcor < minx:
                     minx = current.xcor
                 if current.xcor > maxx:
@@ -140,36 +146,53 @@ class instance:
         
         if not self.isBenchmark:
             if self.twoechelon:
-                #locate staellites around the city/ at midpoints of the rectangle that contains all the demand nodes
-                perSide = int (self.nofSatellites / 4)
-                xIncrement = (maxx - minx) / (perSide+1)
-                YIncrement = (maxy - miny) / (perSide+1)
-                for i in range(4):
-                    for p in range(perSide):
-                        if i == 0 or i == 1:
-                            xCor = minx + xIncrement*(p+1)
-                            if i==0:
-                                yCor = miny
-                            else:
-                                yCor = maxy
-                        else:
-                            yCor = miny + YIncrement*(p+1)
-                            if i==2:
-                                xCor = minx
-                            else:
-                                xCor = maxx
-                        self.nodes.append(Node("S", len(self.nodes), xCor, yCor, 0, self.nodes[0].earliest,
-                                          self.nodes[0].latest, 0))
+                if self.locate_by_kmeans:
+                    data = list(zip(xCoord, yCoord))
+                    kmeans = sklearn.cluster.KMeans(n_clusters=4)
+                    kmeans.fit(data)
+
+                        
+                    centroids = kmeans.cluster_centers_
+                    self.centroids = centroids
+                        
+                    for iii in range(4):
+                        self.nodes.append(Node("S", len(self.nodes), round(centroids[iii][0],2), round(centroids[iii][1],2), 0, self.nodes[0].earliest, self.nodes[0].latest, 0))
                         self.satellites.append(len(self.nodes) -1)
+                        
+                else: #default assumption in the paper
+                    #locate staellites around the city/ at midpoints of the rectangle that contains all the demand nodes
+                    listCoor = []
+                    perSide = int (self.nofSatellites / 4)
+                    xIncrement = (maxx - minx) / (perSide+1)
+                    YIncrement = (maxy - miny) / (perSide+1)
+                    for i in range(4): #number of sides
+                        for p in range(perSide):
+                            if i == 0 or i == 1:
+                                xCor = minx + xIncrement*(p+1)
+                                if i==0:
+                                    yCor = miny + (maxy - miny)*self.closeness
+                                else:
+                                    yCor = maxy - (maxy - miny)*self.closeness
+                            else:
+                                yCor = miny + YIncrement*(p+1)
+                                if i==2:
+                                    xCor = minx + (maxx - minx)*self.closeness
+                                else:
+                                    xCor = maxx - (maxx - minx)*self.closeness
+                            self.nodes.append(Node("S", len(self.nodes), xCor, yCor, 0, self.nodes[0].earliest,
+                                            self.nodes[0].latest, 0))
+                            self.satellites.append(len(self.nodes) -1)
+                            listCoor.append([xCor,yCor])
             else:
                 #locate satellites at the central depot (CDC), e.g. like work stations to perform transfers for vehicle trips
-                for i in range(4):
+                for i in range(self.nofSatellites):
                     self.nodes.append(Node("S", len(self.nodes), self.nodes[self.CDC].xcor, self.nodes[self.CDC].ycor, 0, self.nodes[self.CDC].earliest,
                                           self.nodes[self.CDC].latest, 0))
                     self.satellites.append(len(self.nodes) -1)
         else:
             #satellites are located at the city center based on benchmark in the literature by Grangier et al
             #transfer durations or any handling time is assumed zero in Grangier paper/reference paper.
+            #in total 8 satellites are located for 100 customers
             self.TransferDuration = 0
             xIncrement = (maxx - minx) / 4
             YIncrement = (maxy - miny) / 4
@@ -191,13 +214,13 @@ class instance:
                                       self.nodes[0].latest, 0))
                     self.satellites.append(len(self.nodes) -1)  
         
-    def CreateDistMatrix(self): 
-        self.DistMatrix = numpy.zeros( (len(self.nodes), len(self.nodes)) )
+    def CreateDistMatrix(self): #use Euclidean distance to calculate distances
+        self.DistMatrix = numpy.zeros( (len(self.nodes), len(self.nodes)) ) 
         for i in range(len(self.nodes)):
             for j in range(len(self.nodes)):
                 ii = self.nodes[i]
                 jj = self.nodes[j]
-                cost =round( math.sqrt((ii.xcor - jj.xcor)*(ii.xcor - jj.xcor) + (ii.ycor - jj.ycor)*(ii.ycor - jj.ycor)),2)
+                cost =round( math.sqrt((ii.xcor - jj.xcor)*(ii.xcor - jj.xcor) + (ii.ycor - jj.ycor)*(ii.ycor - jj.ycor)), 2)
                 self.DistMatrix[i][j] = cost
         
         for i in range(len(self.nodes)): #triangle inequality 
@@ -208,77 +231,95 @@ class instance:
                         self.DistMatrix[i][j] = cc
 
     def UpdateTWs(self):
-        #moving time windows to accomodate extra time needed to supply vehicles from CDC
-        addition = math.ceil(self.DistMatrix[0][self.CDC])        
-        for i in range(len(self.nodes)):
-            current = self.nodes[i]
-            if current.type == "C":                
-                current.latest = current.latest +  addition
-                current.earliest = current.earliest + addition
-        
-        maxipt = 0
-        offset = 0
-        for i in self.customers:
-            for p in self.satellites:
-                maxxO = math.ceil(self.nodes[i].latest +self.nodes[i].serviceTime +self.DistMatrix[i][p] 
+        if self.isDelivery: 
+        #moving time windows to accomodate extra time needed to supply vehicles from CDC and vessels to return 
+            addition = math.ceil(self.DistMatrix[self.CDC][0])  + self.TransferDuration    #the best is assumed that vessels bring goods to the depot and transfer them  
+            for i in range(len(self.nodes)):
+                current = self.nodes[i]
+                if current.type == "C":                
+                    current.latest = current.latest +  addition
+                    current.earliest = current.earliest + addition
+
+            #update depot, CDC and satellites for feasibly serving given demand        
+            max_return = float(max(self.nodes[ii].latest +self.nodes[ii].serviceTime +self.DistMatrix[ii][pp] 
                                   +self.TransferDuration
-                                  + self.DistMatrix[p][self.CDC])
-                if maxxO>=offset:
-                    offset = maxxO
-                
-                tttt = math.ceil(self.DistMatrix[0][i] +self.DistMatrix[i][p]+self.DistMatrix[p][0])
-                if tttt>= maxipt:
-                    maxipt = tttt
-       
-        for i in range(len(self.nodes)):
-            current = self.nodes[i]
-            if current.type != "C":                
-                current.latest = max(current.latest + addition, offset)
+                                  + self.DistMatrix[pp][self.CDC] for ii in self.customers for pp in self.satellites ))
+            for i in range(len(self.nodes)):
+                current = self.nodes[i]
+                if current.type != "C":                
+                    current.latest = max_return
+        else:  #if pickup there is no need to move customer time windows, only update vehicles time windows         
+            max_return = float(max(self.nodes[ii].latest +self.nodes[ii].serviceTime +self.DistMatrix[ii][pp] 
+                                  +self.TransferDuration
+                                  + self.DistMatrix[pp][self.CDC] for ii in self.customers for pp in self.satellites ))            
         
-        #cost parameters' reference values 
-        #create arc list and related costs
-        for i in range(len(self.nodes)):
-            for j in range(len(self.nodes)):
-                if i != j and self.nodes[i].type != "S" and self.nodes[j].type != "S" and self.nodes[i].type != "CDC" and self.nodes[j].type != "CDC":
-                    if self.nodes[i].earliest + self.nodes[i].serviceTime + self.DistMatrix[i][j]<=self.nodes[j].latest:
-                        additionalMin = 1000000
-                        for p in self.satellites:
-                            diff = self.DistMatrix[i][p] +  self.DistMatrix[p][j]
-                            if(diff <=additionalMin):
-                                additionalMin = diff
-
-                        
-                        self.arcList.append([[i,j], additionalMin])
-
-        minDistCdc = math.inf
-        maxDistCdc = 0
-        for p in self.satellites:
-            trav = self.DistMatrix[self.CDC][p] + self.DistMatrix[p][self.CDC]
-            if trav < minDistCdc:
-                minDistCdc = trav
-            if trav >= maxDistCdc:
-                maxDistCdc = trav
-
-        self.closestHubtoCDC = minDistCdc
+            for i in range(len(self.nodes)):
+                current = self.nodes[i]
+                if current.type != "C":                
+                    current.latest = max_return       
         
-        self.penaltyVessels = maxDistCdc
-        self.travelcostwater = 1
-        self.penaltyCars = maxipt 
-        self.travelcoststreet = 1
+
+        self.closestHubtoCDC =  round(min( self.DistMatrix[self.CDC][p] + self.DistMatrix[p][self.CDC] for p in self.satellites),2)
+        
         
     def GenerateProblem(self):
         self.AddCDC()
         self.AddSatellites()
         self.CreateDistMatrix()
         self.UpdateTWs()
+
     
-def readGenerate(instance_name, nofWP, WRS, timeLimit):
-    VRPTWinstance = ReadSolomonInstance(instance_name, nofWP)
+    def Set_cost_coefficients(self): # given reference values, the coefs are set according to fixed cost scenario
+        self.fix_ref_scenario = self.update_rule[0] #large costs fixed at makespan
+        self.normalized = self.update_rule[1] #relative ratios are normalized and multiplied with base costs  
+
+        if self.costScenario ==0.1: # WLS = 1:10
+            wcost = 1
+            scost = 10       
+                    
+        elif self.costScenario ==0.2:  # WLS = 1:5
+            wcost = 1
+            scost = 5
+            
+        elif self.costScenario == 1: #WLS = 1:1
+            wcost = 1
+            scost = 1
+            
+        elif self.costScenario == 10: #WLS = 10:1
+            wcost = 10
+            scost = 1
+        
+        if self.normalized:
+            WRS = round(wcost/(wcost+scost), 2)
+            self.travelcostwater *= WRS
+            self.travelcoststreet *= (1- WRS)
+        else:
+            WRS = round(wcost/scost,2) #used in the paper for the final results
+            self.travelcostwater *= WRS
+
+        if self.fix_ref_scenario : #fixed costs are very bog 
+            self.penaltyVessels = self.nodes[0].latest       
+            self.penaltyCars = self.nodes[0].latest
+        else:
+            fixed_vehicle_based_costs = float(round(max(self.travelcoststreet*(self.DistMatrix[0][c] + self.DistMatrix[c][p] + self.DistMatrix[p][0]) 
+                                            + self.travelcostwater*(self.DistMatrix[self.CDC][p]  + self.DistMatrix[p][self.CDC])
+                            for c in self.customers for p in self.satellites),2))
+            
+            self.penaltyVessels = fixed_vehicle_based_costs*WRS 
+            self.penaltyCars = fixed_vehicle_based_costs 
+    
+def readGenerate(instance_name, size, timeLimit,closeness = 0):
+    VRPTWinstance = ReadSolomonInstance(instance_name, size)
     problem = instance(instance_name, VRPTWinstance[0])
+    problem.closeness = closeness #max 0.5 as all satellites are located exactly at the centre of the demand rectangle
     problem.GenerateProblem()
-    problem.penaltyVessels *= WRS
-    problem.travelcostwater *= WRS
+    
     problem.timeLimit = timeLimit
     return problem 
 
+
+#WLS = scenario
+#reported results are fix_ref and not normalized.
+
+    
 
