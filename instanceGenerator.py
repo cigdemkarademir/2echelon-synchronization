@@ -41,10 +41,11 @@ def ReadSolomonInstance(instance_name, N):
                          ss['service_time'])) 
     distMatrix = instance['distance_matrix']
     Capacity = instance['vehicle_capacity']
+    
     return nodes, distMatrix, Capacity
 
 class instance:
-    def __init__(self, name, nodes, decomposedModel=None):
+    def __init__(self, name, nodes):
         self.name = name
         self.nodes = nodes
         self.satellites = []
@@ -56,16 +57,18 @@ class instance:
         self.penaltyVessels = 1000
         self.penaltyCars = 1000
         self.travelcostwater = 1
-        self.travelcoststreet = 1
-        self.singleTransfer = True
-        self.stationaryBarges = False
-        self.multitripsOnStreets = False
+        self.travelcoststreet = 1  
+        self.problem_to_solve = "2eVRP" #default is our problem 
+        self.twoechelon = True    # False for VRP and MVRP, True for 2e-VRP and 2e-LRP
+        self.isBenchmark = False # False for the problems solved, True for locating satellites at the central as suggested by Grangier and many
+        self.stationaryBarges = False #True for 2e-LRP only
+        self.multitripsOnStreets = True  #True for: MVRP, 2e-VRP and 2e-LRP , False for VRP
+        self.singleTransfer = True   #we assume it is true for all problems solved in the paper but if False, it removes one-to-one transfers at the satellites for alternatives 
+        self.locate_by_kmeans = False #locating satellite by rule or kmeans            
+        self.closeness = 0 #locating satellites for 2e-VRP default at the outskirts, 0.5 means locating all at the centre
+        self.isDelivery = False  #if pickup there is no need to move customer time windows, only update vehicles time windows 
         self.report = "report.txt"
-        self.stats = "stats.txt"
-        self.isBenchmark = False
-        self.twoechelon = True
-        self.locate_by_kmeans = False
-        self.isDelivery = False
+        self.stats = "stats.txt"        
         self.bestObjectve = 10000000
         self.bestFoundTime = 0
         self.modelStartTime = 0
@@ -75,8 +78,6 @@ class instance:
         self.minVessels = 0
         self.closestHubtoCDC = 0
         self.optimal = False
-        self.nofRemoval = 3
-        self.closeness = 0
         self.initial_solution = None
         
     def AddCDC(self):
@@ -114,6 +115,12 @@ class instance:
         xcorCDC = minx - (float)((maxx - minx) / 2) # 50% left to the demand area
         ycorCDC = maxy + (float)((maxy - miny) / 2) # 50% up to the demand area -50/150 CDC location scheme used in Grangier et al.
 
+        if self.isBenchmark:
+            xcorCDC = minx + (float)((maxx - minx) / 2) # 50% right to the demand area, middle centre on x axis, closer to the city than our assumption
+            self.TransferDuration = 0
+            self.CarCapacity = self.benchmark_vehicle_capacity*(0.25)
+            self.VesselCapacity = self.benchmark_vehicle_capacity*(2)
+
         self.nodes.append(Node("CDC", len(self.nodes), xcorCDC, ycorCDC, 0, self.nodes[0].earliest,
                                   self.nodes[0].latest, 0))
         self.CDC = len(self.nodes) - 1 #index of the CDC
@@ -121,6 +128,7 @@ class instance:
         #add lower bound on the number of vessels
         lowerVessels = math.ceil (totalDemand / self.VesselCapacity )
         self.minVessels = lowerVessels #only lower bound on the number of vehicles based on the capacity
+        
         
     def AddSatellites(self):
         
@@ -214,6 +222,9 @@ class instance:
                                       self.nodes[0].latest, 0))
                     self.satellites.append(len(self.nodes) -1)  
         
+        for node in self.nodes:
+            if node.type == "S":
+                node.serviceTime = self.TransferDuration
     def CreateDistMatrix(self): #use Euclidean distance to calculate distances
         self.DistMatrix = numpy.zeros( (len(self.nodes), len(self.nodes)) ) 
         for i in range(len(self.nodes)):
@@ -248,6 +259,7 @@ class instance:
                 current = self.nodes[i]
                 if current.type != "C":                
                     current.latest = max_return
+                    
         else:  #if pickup there is no need to move customer time windows, only update vehicles time windows         
             max_return = float(max(self.nodes[ii].latest +self.nodes[ii].serviceTime +self.DistMatrix[ii][pp] 
                                   +self.TransferDuration
@@ -262,7 +274,7 @@ class instance:
         self.closestHubtoCDC =  round(min( self.DistMatrix[self.CDC][p] + self.DistMatrix[p][self.CDC] for p in self.satellites),2)
         
         
-    def GenerateProblem(self):
+    def GenerateProblem(self):        
         self.AddCDC()
         self.AddSatellites()
         self.CreateDistMatrix()
@@ -307,11 +319,58 @@ class instance:
             
             self.penaltyVessels = fixed_vehicle_based_costs*WRS 
             self.penaltyCars = fixed_vehicle_based_costs 
+        if not self.twoechelon:
+            self.penaltyVessels = 0
+            self.penaltyCars = 0
     
-def readGenerate(instance_name, size, timeLimit,closeness = 0):
+def readGenerate(instance_name, size, timeLimit, problem_type = None, closeness = 0):
     VRPTWinstance = ReadSolomonInstance(instance_name, size)
     problem = instance(instance_name, VRPTWinstance[0])
+    problem.benchmark_vehicle_capacity = VRPTWinstance[2]
     problem.closeness = closeness #max 0.5 as all satellites are located exactly at the centre of the demand rectangle
+    
+    problem.problem_to_solve = problem_type
+
+    #problem to solve: VRP, MVRP, 2e-VRP, 2e-LRP, benchmark(approximately Grangier)
+    #single echelon only for VRP and MVRP   
+    if problem_type == "VRP":
+        problem.twoechelon = False   
+        problem.isBenchmark = False        
+        problem.stationaryBarges = False        
+        problem.multitripsOnStreets = False  #only type without multi trips on streets
+        problem.singleTransfer = True
+        problem.CarCapacity = problem.VesselCapacity #increase it to truck size equal to vessel size
+
+    elif problem_type == "MVRP":
+        problem.twoechelon = False   
+        problem.isBenchmark = False        
+        problem.stationaryBarges = False        
+        problem.multitripsOnStreets = True  #only type without multi trips on streets
+        problem.singleTransfer = True
+
+    #two-echelon only for 2e-VRP and 2e-LRP, benchmark
+    elif problem_type == "2eLRP":
+        problem.twoechelon = True   
+        problem.isBenchmark = False        
+        problem.stationaryBarges = True        
+        problem.multitripsOnStreets = True  #only type without multi trips on streets
+        problem.singleTransfer = True
+
+    elif problem_type == "2eVRPBenchmark":
+        problem.twoechelon = True   
+        problem.isBenchmark = True        
+        problem.stationaryBarges = False        
+        problem.multitripsOnStreets = True  #only type without multi trips on streets
+        problem.singleTransfer = False
+        problem.TransferDuration = 0
+    else:#ours
+        problem.twoechelon = True   
+        problem.isBenchmark = False        
+        problem.stationaryBarges = False        
+        problem.multitripsOnStreets = True  #only type without multi trips on streets
+        problem.singleTransfer = True
+
+
     problem.GenerateProblem()
     
     problem.timeLimit = timeLimit

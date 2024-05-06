@@ -10,6 +10,7 @@ class Solution:
         self.objVal = 100000000
         self.nVessel = 0
         self.nCars = 0
+        self.fixed_arcs_cost = 0
         self.travelWater = 0
         self.travelStreet = 0
         self.fleetWater = 0
@@ -43,6 +44,7 @@ class Solution:
         self.reducedCosts = []
         self.piA = []
         self.piT =[]
+        self.exact_synch_cost = 0
         self.ts = False
         self.solvedRouting = False
         self.optimizedHubs = False

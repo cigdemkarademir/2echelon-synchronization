@@ -86,8 +86,6 @@ class street_vehicle:
                 self.transfers.remove(infeasible_node.index)
             print("infeasible transfer assignment")
             infeasible_node = self.feas_check(problem)
-            return removed_nodes
-        #check transfers
         
 
         return removed_nodes             
@@ -96,7 +94,11 @@ class street_vehicle:
     def feas_check(self, problem): #no load capacity        
         self.isFeasible = True
         self.load = sum(x.demand for x in self.sequence)        
-        
+        if problem.trip_generation:
+            if self.load > problem.carCapacity:
+                self.isFeasible = False
+                return self.sequence[-1]   #return the first 
+
         #arrival start at first customer
         self.start = problem.DistMatrix[0][self.sequence[0].index]
         self.travel = self.start
