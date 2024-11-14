@@ -134,7 +134,7 @@ class Solution:
         
         nofHubsUsed = numpy.unique(hubs)
         
-        file4.write(str(problem.name)+"\t"+str(len(problem.customers))+"\t"+str(problem.costScenario)+"\t"+str(problem.fix_ref_scenario)+"\t"+str(problem.normalized)+"\t"+"StreetLevel nofCars"+"\t"+str(nofCars)+"\t"
+        file4.write(str(problem.name)+"\t"+str(len(problem.customers))+"\t"+problem.problem_type+"\t"+str(problem.costScenario)+"\t"+str(problem.fix_ref_scenario)+"\t"+str(problem.normalized)+"\t"+"StreetLevel nofCars"+"\t"+str(nofCars)+"\t"
                     +"Street Travel Time"+"\t"+str(round(streetCost,2))+"\t"+str(round(street,2))+"\t"+"AverageLoaded"+"\t"+str(averageLoadCars)+"\t"
                     +"Average PercentLoad"+"\t"+str(averagePercentLoadCars)+"\t"+"ModalShare"+"\t"+str(modalShare)+"\t"
                     +"Minimum required nofTransfers"+"\t"+str(minimumNofTransfers)+"\t"+"nofTransfersOptimal"+"\t"+str(nofTransfers)+"\t"

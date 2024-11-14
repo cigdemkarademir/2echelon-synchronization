@@ -290,7 +290,7 @@ def JointSynchronized(problem):
     if problem.stationaryBarges: # 2E-LRP : fixed the number of facilities to open
         nofBarges = math.ceil(sumDemand/problem.VesselCapacity)
         model.addConstr(FleetWater==problem.penaltyVessels*nofBarges)
-        model.addConstr(quicksum(z[p] for p in Satellites) ==nofBarges)
+        model.addConstr(quicksum(z[p] for p in Satellites) <=nofBarges)
         for i in Customers:
             for p in Satellites:
                 model.addConstr(vip[i,p] <=z[p])
@@ -298,7 +298,7 @@ def JointSynchronized(problem):
             for j in setCw:
                 if i!=j:
                     if i !=CDC and j != CDC:                    
-                        model.addConstr(arcWaterCost[i,j] ==0)
+                        model.addConstr(arcWaterCost[i,j] == 0)
 
                             
     # Set the type of objective

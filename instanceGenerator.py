@@ -74,6 +74,7 @@ class instance:
         self.modelStartTime = 0
         self.lowerFound = False
         self.lowerBoundRoot = 0
+        self.lowerBoundLatest = 0
         self.arcList = []
         self.minVessels = 0
         self.closestHubtoCDC = 0
@@ -275,9 +276,12 @@ class instance:
         
         
     def GenerateProblem(self):        
-        self.AddCDC()
+        self.AddCDC()        
+        self.TransferDuration = 0
         self.AddSatellites()
+        self.TransferDuration = 0
         self.CreateDistMatrix()
+        self.TransferDuration = 0
         self.UpdateTWs()
 
     

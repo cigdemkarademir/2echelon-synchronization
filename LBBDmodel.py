@@ -86,7 +86,7 @@ class DecomposedModel:
     def report_best_solution(self, problem):
         self.check_found_solutions_IP()
                 
-        problem.decomposedModel.bestSolution.ReportStatisticsSolution(problem, problem.decomposedModel.bestSolution.travelStreet, problem.decomposedModel.bestSolution.travelWater*problem.travelcostwater)
+        problem.decomposedModel.bestSolution.ReportStatisticsSolution(problem, problem.decomposedModel.bestSolution.travelStreet, problem.decomposedModel.bestSolution.travelWater) #already in kms
         problem.decomposedModel.write_out_solution(problem)
         return
     def write_out_solution(self, problem):
@@ -342,8 +342,8 @@ class MasterProblem:
         
         #self.model.setParam('Nodelimit', 10)
         self.model.setParam('Timelimit', 50)  
-        if len(problem.nodes)>50:
-            self.model.setParam('Timelimit', 200)
+        if len(problem.nodes)>=50:
+            self.model.setParam('Timelimit', 100)
         self.model.setParam('OutputFlag', 0)
         self.model._initialsols = []
         self.model.optimize(callbackWarmUp)
@@ -425,7 +425,7 @@ class MasterProblem:
                 averageImp = 0
             if problem.onlyFeasCuts:
                 file1 = open(problem.report,"a")
-                file1.write(instanceNameSplit[0]+"\t"+str(len(problem.customers))+"\t"+str(problem.costScenario)+"\t"+str(problem.fix_ref_scenario)+"\t"+str(problem.normalized)
+                file1.write(instanceNameSplit[0]+"\t"+str(len(problem.customers))+"\t"+problem.problem_type+"\t"+str(problem.costScenario)+"\t"+problem.problem_type+"\t"+str(problem.normalized)
                             +"DecomposedTwoIndex"+"\t"+"final"+"\t"+str(round(problem.decomposedModel.bestSolution.objVal,2))+"\t"+ str(round(problem.decomposedModel.bestSolution.nCars,2))
                             +"\t"+str(round(problem.decomposedModel.bestSolution.travelStreet,2))+"\t"+str(round(problem.decomposedModel.bestSolution.nVessel,2))
                             +"\t"+str(round(problem.decomposedModel.bestSolution.travelWater,2))+"\t"+str(self.cplex_gap)+"\t"+ str(self.status)
@@ -440,8 +440,10 @@ class MasterProblem:
             
                         
             file1 = open(problem.report,"a")
-            file1.write(instanceNameSplit[0]+"\t"+str(len(problem.customers))+"\t"+str(problem.costScenario)+"\t"+str(problem.fix_ref_scenario)+"\t"+str(problem.normalized)
-                        +"DecomposedTwoIndex"+"\t"+"final"+"\t"+str(round(problem.decomposedModel.bestSolution.objVal,2))+"\t"+ str(round(problem.decomposedModel.bestSolution.nCars,2))
+            file1.write(instanceNameSplit[0]+"\t"+str(len(problem.customers))+"\t"+str(problem.costScenario)+"\t"+problem.problem_type+"\t"+str(problem.normalized)
+                        +"DecomposedTwoIndex"+"\t"+"final"+"\t"+str(round(problem.decomposedModel.bestSolution.objVal,2))
+                        +"\t"+str(round(problem.lowerBoundLatest,2))
+                        +"\t"+ str(round(problem.decomposedModel.bestSolution.nCars,2))
                         +"\t"+str(round(problem.decomposedModel.bestSolution.travelStreet,2))+"\t"+str(round(problem.decomposedModel.bestSolution.nVessel,2))
                         +"\t"+str(round(problem.decomposedModel.bestSolution.travelWater,2))+"\t"+str(self.cplex_gap)+"\t"+ str(self.status)
                         +"\t"+str(round(problem.decomposedModel.bestSolution.travelWater+problem.decomposedModel.bestSolution.travelStreet,2))
@@ -474,8 +476,8 @@ class MasterProblem:
             
         else:
             file1 = open(problem.report,"a")
-            file1.write(instanceNameSplit[0]+"\t"+str(len(problem.customers))+"\t"+str(problem.costScenario)+"\t"+str(problem.fix_ref_scenario)+"\t"+str(problem.normalized)
-                        +"DecomposedTwoIndex"+"\t"+"No solution"+"\n" )
+            file1.write(instanceNameSplit[0]+"\t"+str(len(problem.customers))+"\t"+str(problem.costScenario)+"\t"+problem.problem_type+"\t"+str(problem.normalized)
+                        +"DecomposedTwoIndex"+"\t"+"No solution"+"\t"+str(round(time.time() - problem.decomposedModel.startTime,2))+"\n" )
             file1.close()    
 
 def callbackLBBD(model, where):   
@@ -525,10 +527,12 @@ def callbackLBBD(model, where):
                             problem.decomposedModel.masterProblem.routingVars, problem.decomposedModel.masterProblem.transferVars, "feas1") #feas1
             model.cbLazy(cut) 
         best_bound = model.cbGet(GRB.Callback.MIPSOL_OBJBND)
-        if best_bound >= problem.decomposedModel.bestSolution.lowerFixed :
+        problem.lowerBoundLatest = best_bound
+        if best_bound >= problem.decomposedModel.bestSolution.lowerFixed :            
             model.terminate()
         elif where == GRB.Callback.MIPNODE :
-            if model.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL:    #called after MIPSOL  
+            if model.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL:    #called after MIPSOL
+                
                 for solutionF in problem.decomposedModel.feas_cuts:            
                     model.cbSetSolution(solutionF.variables, solutionF.values)
                     objValue1 = model.cbUseSolution()

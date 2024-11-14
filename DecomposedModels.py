@@ -553,9 +553,9 @@ def Subproblem_bounded(problem, currentSolution): #fixed routing and transfer se
         z = {}
         for p in Satellites:
             z[p] = model.addVar (vtype=GRB.BINARY, name="z["+str(p)+"]") #barge location decisions
-        nofBarges = math.ceil(totalDemand/problem.VesselCapacity)
+        nofBarges = math.ceil(sumDemand/problem.VesselCapacity)
         model.addConstr(nofVessels == nofBarges)
-        model.addConstr(quicksum(z[p] for p in Satellites) ==nofBarges)
+        model.addConstr(quicksum(z[p] for p in Satellites) <=nofBarges)
         for i in transferSet:
             for p in Satellites:
                 model.addConstr(vip[i,p] <=z[p])
@@ -616,12 +616,16 @@ def Subproblem_bounded(problem, currentSolution): #fixed routing and transfer se
     except:
         feasible_exists = False
 
-    if not feasible_exists:        
+    if not feasible_exists:      
+        print("status subproblem", fixed.status)
         currentSolution.timeFound = round( time.time() - problem.decomposedModel.startTime, 4)        
         problem.decomposedModel.inFeasibleSolutions.append(currentSolution)
         problem.decomposedModel.inf_cuts.append(currentSolution)
         currentSolution.isFeasible = False
         currentSolution.foundInregral = True
+        #model.computeIIS()
+        #model.write("model"+str(len(problem.decomposedModel.inFeasibleSolutions))+".ilp")
+
         return currentSolution 
     #get dual multipliers
     #region
